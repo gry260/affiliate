@@ -1,0 +1,5 @@
+name: StudentApi
+type: module
+description: student
+package: Custom
+core: 8.x

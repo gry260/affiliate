@@ -1,0 +1,167 @@
+<?php
+
+namespace Drupal\StudentAPI;
+
+class StudentAPI
+{
+
+  private static $_cas_url;
+  private static $_validate_cas_url;
+  private static $_url;
+  private $_uid;
+
+  public function isLoggedIn()
+  {
+    session_status() == PHP_SESSION_NONE ? session_start() : false;
+    self::setCasUrl();
+    if(empty($_SESSION['uid']) && empty($_GET['ticket'])){
+      self::URLRedirect();
+    }
+    else if($_SESSION['logged_in'] === false){
+      $response = self::responseForTicket($_GET['ticket']);
+      if (empty($response)){
+        echo "<br />The response was not valid.";
+        exit;
+      }
+      else if (!($uid = self::uid($response))){
+        echo "Could not get UID from response.";
+      }
+      $this->_uid = $uid;
+      $_SESSION['uid'] = $this->_uid;
+      $_SESSION['logged_in'] = true;
+    }
+  }
+
+
+  private static function URLRedirect()
+  {
+    header('Location: ' . self::$_cas_url);
+    exit;
+  }
+
+  private static function setCasUrl()
+  {
+    if ($_SERVER['SERVER_NAME'] == 'localhost' ||
+      $_SERVER['SERVER_NAME'] == 'mysummer-dev-demo.berkeley.edu' ||
+      $_SERVER['SERVER_NAME'] == 'mysummer-dev.berkeley.edu'
+    ) {
+      self::$_url = 'http://localhost/affiliate';
+      self::$_cas_url = 'https://auth-test.berkeley.edu/cas/login?service=' . self::$_url;
+      self::$_validate_cas_url = 'https://auth-test.berkeley.edu/cas/serviceValidate?ticket=';
+    } else {
+      self::$_url = 'http://localhost/affiliate';
+      self::$_cas_url = 'https://auth.berkeley.edu/cas/login?service='. self::$_url;
+      self::$_validate_cas_url = 'https://auth.berkeley.edu/cas/serviceValidate?ticket=';
+    }
+
+
+  }
+
+  private static function getCasUrl()
+  {
+    return self::$_cas_url;
+  }
+
+
+  /*------------------------------------------------------------------------------
+* searchLDAP
+* This function returns the results from a LDAP search.
+*
+* Parameters:
+* ldapServer - LDAP server to connect to
+* host - LDAP host name
+* pass - LDAP password
+* searchTerm - LDAP search string
+*
+* Return values:
+* It returns the LDAP search results, false otherwise.
+------------------------------------------------------------------------------*/
+  public static function searchLDAP($ldapServer, $host, $pass, $dn, $searchTerms)
+  {
+    /* connect to LDAP server */
+    $ldapconn = ldap_connect($ldapServer);
+    if (!$ldapconn) {
+      echo 'LDAP connection failed';
+      return false; /* connection failed */
+    } else {
+      /* binding to LDAP server */
+      $ldapbind = ldap_bind($ldapconn, $host, $pass);
+      if (!$ldapbind) {
+        echo 'LDAP bind failed';
+        return false; /* bind failed */
+      } else {
+        /* bind success, perform search */
+        $ldapSearch = ldap_search($ldapconn, $dn, $searchTerms);
+        if (!$ldapSearch) {
+          echo 'LDAP search failed';
+          return false; /* search failed */
+        } else {
+          /* get LDAP entries */
+          $ldapEntry = ldap_get_entries($ldapconn, $ldapSearch);
+          return $ldapEntry;
+        }
+      }
+      /* close LDAP connection */
+      ldap_close($ldapconn);
+    }
+  }
+
+  /*------------------------------------------------------------------------------
+  * getLDAP_sid
+  * This function returns the SID from LDAP search.
+  *
+  * Parameters:
+  * ldapServer - LDAP server to connect to
+  * host - LDAP host name
+  * pass - LDAP password
+  * uid - UID of the person to search for
+  *
+  * Return values:
+  * It returns the person's SID, false otherwise.
+  ------------------------------------------------------------------------------*/
+  public static function getLDAP_sid($ldapServer, $host, $pass, $uid)
+  {
+    $dn = 'ou=people,dc=berkeley,dc=edu';
+    $searchTerms = 'uid=' . $uid;
+    $ldapRes = searchLDAP($ldapServer, $host, $pass, $dn, $searchTerms);
+    if ($ldapRes['count'] != 1) {
+      echo 'LDAP search result != 1';
+      return false;
+    } else {
+      if (!isset($ldapRes[0]['berkeleyedustuid'][0])) {
+        echo 'berkeleyedustuid not set';
+        return false;
+      } else
+        return $ldapRes[0]['berkeleyedustuid'][0];
+    }
+  }
+
+  public static function responseForTicket($ticket)
+  {
+    $url = self::$_validate_cas_url.$ticket.'&service='.self::$_url;
+    $response = file_get_contents($url);
+    if (preg_match('/cas:authenticationSuccess/', $response)) {
+      return $response;
+    } else {
+      return false;
+    }
+  }
+
+  /* Returns the UID from the passed in response, or false if no UID. Thx to Lucas
+  Rockwell for this function  */
+  public static function uid($response)
+  {
+    /* Turn the response into an array */
+    $responseArray = preg_split("/\n/", $response);
+    /* Get the line that has the cas:user tag */
+    $casUserArray = preg_grep("/(\d+)<\/cas:user>/", $responseArray);
+    if (is_array($casUserArray)) {
+      $uid = trim(strip_tags(implode($casUserArray)));
+      if (is_numeric($uid)) {
+        return $uid;
+      }
+    }
+    return false;
+  }
+}
+

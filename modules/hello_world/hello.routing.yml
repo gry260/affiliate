@@ -1,0 +1,7 @@
+hello.demo:
+   path: '/hello'
+   defaults:
+     _controller: '\Drupal\hello\Controller\HelloController::demo'
+     _title: 'Hello World'
+   requirements:
+     _permission: 'access content'

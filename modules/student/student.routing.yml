@@ -1,0 +1,7 @@
+hello.demo:
+   path: '/student'
+   defaults:
+     _controller: '\Drupal\student\Controller\StudentController::demo'
+     _title: ''
+   requirements:
+     _permission: 'access content'
